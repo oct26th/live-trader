@@ -238,6 +238,40 @@ momentum strategies perform best at cycle-start, worst at cycle-peak.
 3. BTC 1D closes below MA200, then re-crosses above and holds ≥ 2 weeks
 4. Lilith's Hermes sweep confirms best-params haven't drifted on fresh 2025-2026 data
 
+**Known blind spots from 2025 backtest (Lilith, 2026-04-24) — defer until first live signal:**
+
+Lilith re-ran Variant A against fresh 2025-01 → 2026-04 data. Result: **-56.22%** total return,
+-57.52% max DD. Breakdown:
+- 2025-01 → 2025-10: Most losses here. BTC still > MA200 so filter stayed ON, strategy kept
+  picking "relatively strong" alts. They kept getting stopped at -10% (SL 46 times, ROT 32 times).
+- 2025-11 → 2026-04: BTC broke MA200 → filter OFF → flat 0% per month. Saved from further damage.
+
+This proves two structural gaps even in the "fixed" Variant A:
+
+**Blind spot 1 — MA200 filter is too slow.** By the time BTC 1D closes below MA200, alts have
+already dropped 50-70%. 2025-10 alone was -26.79%. Consider a faster secondary kill switch:
+- Candidate: "BTC 1D close < MA50 for 3 consecutive days" → liquidate. Reacts ~1 month earlier
+  than MA200 without over-triggering like the rejected 7d return switch.
+- Implementation: ~10 lines in `_rebalance()` or a new `_fast_kill_switch()` called per tick.
+
+**Blind spot 2 — Momentum ranking fails in slow bleed markets.** Top-5 by 30d log return will
+always pick the "least bad" coin, but in a market-wide downtrend the least bad is still losing.
+- Candidate: require `top[i].30d_log_return > 0` AND `> vol * sqrt(30)` (signal > noise).
+  If fewer than 5 coins qualify, hold fewer positions (or go fully flat).
+- Implementation: ~5 lines in the `scored` filter inside `_rebalance()`.
+
+**Why deferred:** Paper mode will naturally be flat right now (BTC < MA200 as of 2026-04-24),
+so blind spot 1 can't be validated until BTC re-crosses MA200 and the next downturn tests it.
+Blind spot 2 can be observed as soon as the first rebalance fires — if top-5 all have negative
+30d returns, the patch is warranted.
+
+**Observation checklist while paper runs:**
+- [ ] Verify `paper_state.json.filter_on` flips correctly when BTC crosses MA200 (either direction)
+- [ ] On first Sunday rebalance after filter re-activates, record the 5 picked coins and their 30d returns
+- [ ] If all 5 picks have negative 30d return → blind spot 2 confirmed, apply Candidate fix
+- [ ] After 30 days of paper: compare paper trades vs Lilith's backtest for same period (±5%)
+- [ ] Before flipping DRY_RUN=false: re-read this section end-to-end
+
 ---
 
 ## Decision Log
