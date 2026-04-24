@@ -138,3 +138,69 @@ Before sizing an entry, estimates round-trip fees as `TAKER_FEE * (1 + tp1/2 + t
 ### Code Removal in v4
 
 - `_1h_signal()` — never called, removed per Variant C findings (1H signals are noise). Available in archive_v3.py if needed.
+
+---
+
+## Outstanding Strategy Questions (To Resolve)
+
+### 1. Regime Switching Frequency & Whipsaw Risk
+
+**Current state:** ADX thresholds at 25 (RANGE/TRANSITION) and 40 (TRANSITION/TRENDING) are reasonable, but no mitigation for rapid oscillation.
+
+**Problems:**
+- If ADX bounces 24.5 ↔ 25.5 over several hours, you flip between RANGE and TRANSITION multiple times, each flip changing `max_active` (2 vs 1 coin) and entry rules, forcing unwanted rotations.
+- ADX itself has ~1 hour lag (14-period) on 4H data, so regime detection is always one candle behind actual market state.
+
+**TODO:**
+- Add `_regime_history` tracking (last 10 regimes + timestamps).
+- Measure: regime switch count per 24h. If >5 switches, consider adding a 1-hour "hold" zone (32–38 ADX) before switching.
+- Consider regime detection on 1H or 2H timeframe instead of 4H for faster response.
+- Log every regime switch with ADX value for post-hoc analysis.
+
+### 2. PULLBACK Entry Fill Rate in RANGE Mode
+
+**Current state:** PULLBACK entries require `rsi < 38` (oversold), only available in RANGE and TRANSITION modes.
+
+**Problem:**
+- In stable range-bound markets, RSI may oscillate around 45–55 and rarely touch 38. You may sit idle for hours waiting for a pullback that never comes.
+- Meanwhile TREND entries are disabled in RANGE mode (per Variant C backtest results), leaving money on the table.
+
+**TODO:**
+- Log "PULLBACK entry opportunities missed" counter — how often is `rsi >= 38` when a PULLBACK signal fires?
+- If fill rate < 20%, consider loosening the threshold to `rsi < 45` or allowing weak TREND entries even in RANGE (test separately).
+- Alternative: Add a 1H "intraday trend" entry that fires regardless of regime, gated by ADX > 25 on 1H chart.
+
+### 3. Realized Fees vs. Filter Minimum
+
+**Current state:** Fee filter uses `MIN_NET_PROFIT = 3%` (conservative) and estimates round-trip fees. Actual realized fees are not tracked per trade.
+
+**Problem:**
+- Coinbase taker fee is ~0.6%, so round-trip is ~1.2%. TP2 10% (RANGE) - 1.2% = 8.8% net — well above 3%, so the filter is safe but opaque.
+- If you scale into a position (multiple buys) or exit TP1 early (rotation pressure), fees compound, but the filter doesn't see this.
+- No visibility into actual P&L net of slippage + fees; you don't know if the strategy is really making 3% per trade or just meeting the filter.
+
+**TODO:**
+- Add per-trade fee tracking: log entry fee, partial TP1 fee, final TP2 fee, and realized net P&L per symbol.
+- Compare logged realized P&L against backtest expectations (Variant C: −0.4% return, −13.3% max DD).
+- If actual fees exceed modeled fees by >50 bps, adjust MIN_NET_PROFIT or fee estimation formula.
+- Store fee data in `_partial_sells[cb_sym]` alongside `{tp1_done, tp2_done}` for audit trail.
+
+### 4. Pool & Rotation Churn
+
+**Current state:** 20-coin pool, top-N active rotation every 14 days via rolling rank.
+
+**TODO:**
+- Log active set every hour: track set membership, churn rate (how often ranking changes), and repeated winners.
+- If active set stability < 90% (members stay >13 of 14 days), rotation is too aggressive → reduce `SCORE_INTERVAL` or smooth the ranking.
+- If same 3 coins dominate for weeks, check for regime exploitation (e.g., "always BTC/USDT in TRENDING") → may not generalize.
+- Monitor: after restart and state restoration, verify that restored `_entry_px` and `_partial_sells` align with live Coinbase positions (no ghost records).
+
+---
+
+## Decision Log
+
+- ✅ **ADX thresholds (25/40):** Validated by Variant C backtest (Sharpe improved by removing 1H signals). Keep as-is.
+- ✅ **RANGE disables TREND entries:** Variant C backtest confirmed improvement. Keep current logic.
+- ⏳ **Regime hold zone:** TBD after measuring switch frequency.
+- ⏳ **PULLBACK fill rate:** TBD after logging opportunity counts.
+- ⏳ **Fee tracking:** Recommended but not blocking; implement after ship.
