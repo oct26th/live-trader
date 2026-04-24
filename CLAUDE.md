@@ -195,12 +195,58 @@ Before sizing an entry, estimates round-trip fees as `TAKER_FEE * (1 + tp1/2 + t
 - If same 3 coins dominate for weeks, check for regime exploitation (e.g., "always BTC/USDT in TRENDING") → may not generalize.
 - Monitor: after restart and state restoration, verify that restored `_entry_px` and `_partial_sells` align with live Coinbase positions (no ghost records).
 
+### 5. Variant C is Structurally Unprofitable — Migrate to Momentum Rotation (Variant A)
+
+**Discovered 2026-04-24:**
+
+Three independent backtests showed Variant C (PULLBACK + TREND dual-track, regime-adjusted) is
+structurally broken on 4H timeframe across ALL market conditions:
+- Lilith's 570d dataset (2024-10 → 2026-04, bull): 1 trade, -4.75%
+- Local 720d backtest (2022-2023, bear+range+rebound): 123 trades, avg -5.23% per 180d segment
+- PULLBACK signal (RSI < 38 on 4H) fires **0 times across 8 historical segments** — structural dead code
+- TREND signal ~50% win rate, but SL triggers faster than TP → net negative in all segments
+
+**Root cause:** Mean-reversion strategy on 4H is a dead zone — high-freq (5m-1H) works for stat arb,
+1D+ works for long-term reversion, but 4H has neither signal density nor mean-reverting behavior.
+
+**Migration target:** `backtest_momentum.py` Variant A (`VOL=6%, SL=-10%`):
+- 3-year backtest: +61.9% return (vs Variant C's -5.2%)
+- Rules: weekly rebalance, top-5 by 20-30d log return, BTC 1D MA200 kill switch, per-coin -10% SL, vol cap 6%
+- Max DD still -72.5% — **unacceptable for live deployment**
+
+**Decision:** Implement Variant A in `trader.py` but ship with `DRY_RUN=True` (paper mode).
+Run 30-60 days to validate signal reproducibility and timing alignment vs backtest. Only flip to
+`DRY_RUN=False` when BTC breaks MA200 down and stabilizes above again (next cycle bottom) —
+momentum strategies perform best at cycle-start, worst at cycle-peak.
+
+**Paper Mode Implementation Plan:**
+
+| Component | Change |
+|-----------|--------|
+| `config.py` | Add `DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"` flag |
+| `config.py` | Add momentum constants: `MOMENTUM_LOOKBACK=30`, `MOMENTUM_TOP_K=5`, `MOMENTUM_SL=-0.10`, `VOL_CAP=0.06` |
+| `exchange.py` | New `get_binance_exchange()` for 1D OHLCV (strategy needs daily data, not 4H) |
+| `trader.py` | Replace `tick()` logic with weekly rebalance loop. Keep Portfolio/State/Notifier intact. |
+| `trader.py` | Branch in `_buy()` / `_sell()`: DRY_RUN=True → log-only, update Portfolio in memory; DRY_RUN=False → Coinbase order |
+| `state.py` | Add paper-mode state file: `/tmp/trading_output/paper_state.json` (separate from live_state.json) |
+| `main.py` | Print `🧪 PAPER MODE` banner on startup if DRY_RUN |
+| `notifier.py` | Discord digest tags `[PAPER]` prefix in DRY_RUN mode |
+
+**Shipping criteria (paper → live):**
+1. Paper mode runs ≥ 30 days without crashes
+2. Paper signals reproduce within ±5% of backtest for the same period (validate alignment)
+3. BTC 1D closes below MA200, then re-crosses above and holds ≥ 2 weeks
+4. Lilith's Hermes sweep confirms best-params haven't drifted on fresh 2025-2026 data
+
 ---
 
 ## Decision Log
 
-- ✅ **ADX thresholds (25/40):** Validated by Variant C backtest (Sharpe improved by removing 1H signals). Keep as-is.
-- ✅ **RANGE disables TREND entries:** Variant C backtest confirmed improvement. Keep current logic.
-- ⏳ **Regime hold zone:** TBD after measuring switch frequency.
-- ⏳ **PULLBACK fill rate:** TBD after logging opportunity counts.
-- ⏳ **Fee tracking:** Recommended but not blocking; implement after ship.
+- ✅ **ADX thresholds (25/40):** Validated by Variant C backtest. N/A under Variant A (no regime logic).
+- ✅ **RANGE disables TREND entries:** Validated historically. N/A under Variant A.
+- ✅ **Variant A momentum rotation (2026-04-24):** Chosen over Variant C after 3 backtests confirmed V.C structural failure. Params: `VOL=6%, SL=-10%, top-5, lookback-30d, BTC MA200 filter`.
+- ✅ **Paper mode before live (2026-04-24):** $512 real balance too small to absorb historical -72% DD. Paper trade until next BTC cycle bottom confirms entry timing.
+- ❌ **BTC 7-day return kill switch:** Sweep showed it over-triggers and destroys 2023 gains. Rejected.
+- ⏳ **Regime hold zone:** N/A under Variant A (no regimes).
+- ⏳ **PULLBACK fill rate:** Moot — PULLBACK track removed in migration.
+- ⏳ **Fee tracking:** Still needed for paper-mode validation vs backtest expectations.
