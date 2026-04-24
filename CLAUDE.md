@@ -6,6 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Active development is on **`master`**, not `main`. `main` only contains the initial commit. `origin/HEAD` points at `main` so a fresh clone lands on the wrong branch — switch to `master` before reading code.
 
+## Version vs. Deployment State
+
+**Code version ≠ what's running on Hermes.** Don't confuse the two.
+
+| Version | Strategy | File(s) | On Hermes? |
+|---------|----------|---------|-----------|
+| v3 | Variant C (monolithic 668-line script) | `archive_v3.py` | ✅ STILL running via `python3 live_trader_v3.py` |
+| v4 | Variant C (modular) | `trader.py` + `main.py` | ❌ Uploaded but not started — **skipped** |
+| **v5-paper** | **Variant A momentum rotation, DRY_RUN=true** | `trader_momentum.py` + `main_paper.py` | Target deployment |
+| v5-live | Variant A + real orders | Same + `DRY_RUN=false` env | Future (after shipping criteria §5) |
+
+**Why v4 was skipped:** v3 and v4 are mathematically equivalent (both Variant C). Three backtests
+(2026-04-24) proved Variant C structurally unprofitable on 4H across all market regimes. Switching
+v3→v4 = cleaner code, same losing strategy. Not worth deploying.
+
+**Migration path:** v3 → v5-paper (direct skip), validate paper ≥30 days + BTC MA200 re-cross,
+then v5-paper → v5-live.
+
+**The v4 refactor was still valuable** — it split the monolith into `config/indicators/portfolio/
+exchange/state/notifier` which v5 reuses. Don't delete v4 code, it's the foundation for v5.
+
 ## Running
 
 v4 is a modular package. No build step, no test suite:
