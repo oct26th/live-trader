@@ -186,6 +186,15 @@ class LiveTrader:
         self._blacklist     = {}    # {bin_sym: unlock_ts}
         self._rotation_count = 0
         self._regime_cfg    = {"allow_trend": True, "max_active": 3, "tp1": 0.08, "tp2": 0.15, "sl": -0.05}  # default fallback
+        self._prev_regime   = None        # previous BTC regime for switch detection
+        self._regime_history = []          # [(timestamp, old_regime, new_regime), ...]
+        self._regime_hold_until = None      # hold zone: pause regime-based trend track
+        # ── Monitoring: PULLBACK fill rate ──────────────────────────────────
+        self._pb_eval       = 0            # RANGE RSI<38 opportunities seen
+        self._pb_entries    = 0            # PULLBACK entries that actually fired
+        self._pb_eval_reset = None         # last reset time (24h window)
+        # ── Monitoring: realized fees per trade ─────────────────────────────
+        self._expected_entry_px = {}        # {cb_sym: expected_fill_price} for slippage calc
 
     def authenticate(self):
         self.ex = get_exchange()
@@ -201,7 +210,33 @@ class LiveTrader:
                 self.portfolio.positions[cb_sym] = qty
                 log.info(f"   Loaded position: {cb_sym} qty={qty:.6f}")
         log.info(f"   Pool: {list(SYMBOL_MAP.keys())}")
+        self._load()   # restore monitoring state
         return True
+
+    def _load(self):
+        """Restore monitoring & position state from last save."""
+        p = "/tmp/trading_output/live_state.json"
+        if not os.path.exists(p):
+            return
+        try:
+            with open(p) as f:
+                s = json.load(f)
+            self._prev_regime      = s.get("_prev_regime")
+            self._regime_history   = s.get("_regime_history", [])
+            self._regime_hold_until = s.get("_regime_hold_until")
+            self._pb_eval          = s.get("_pb_eval", 0)
+            self._pb_entries       = s.get("_pb_entries", 0)
+            self._pb_eval_reset    = s.get("_pb_eval_reset")
+            self._expected_entry_px = s.get("_expected_entry_px", {})
+            # Prune stale regime history on load
+            now = time.time()
+            self._regime_history = [(ts, o, n) for ts, o, n in self._regime_history
+                                     if now - ts < 86400]
+            log.info(f"   📜 State loaded — prev_regime={self._prev_regime}, "
+                     f"regime_switches={len(self._regime_history)}/24h, "
+                     f"pb={self._pb_entries}/{self._pb_eval}")
+        except Exception as e:
+            log.warning(f"   State load failed: {e}")
 
     def fetch_close(self, bin_sym, timeframe='4h', limit=300):
         import ccxt
@@ -432,6 +467,8 @@ class LiveTrader:
                 "side": "BUY", "qty": actual_qty, "price": price,
                 "rsi": round(rsi, 1), "weight": round(weight, 2),
                 "alloc_usd": round(alloc_usd, 2)})
+            # ── MONITOR 3: Store expected fill price for slippage calc ──────────
+            self._expected_entry_px[cb] = price
             log.info(f"   ✅ Filled qty={actual_qty:.6f}")
         except Exception as e:
             log.error(f"   BUY FAILED: {e}")
@@ -442,11 +479,20 @@ class LiveTrader:
         if pos_qty <= 0: return
         actual_qty = qty if qty is not None else pos_qty
         entry = self._entry_px.get(cb, price)
-        pnl = (price - entry) / entry * 100
-        proceeds = actual_qty * price * 0.994
-        fee = actual_qty * price * 0.006
+        pnl_raw = (price - entry) / entry * 100
+        proceeds = actual_qty * price * (1 - self.TAKER_FEE)
+        fee = actual_qty * price * self.TAKER_FEE
+        # ── MONITOR 3: Slippage = actual fill price vs expected entry price ───
+        expected_px = self._expected_entry_px.get(cb, entry)
+        slippage_ticks = (price - expected_px) / expected_px * 100  # % difference
+        slippage_cost  = abs(slippage_ticks / 100 * actual_qty * price)
+        net_pnl = pnl_raw * actual_qty * expected_px / (actual_qty * price) if price > 0 else 0
+        # Simplified net P&L%: raw pnl minus fees and slippage cost as % of entry value
+        entry_value = actual_qty * entry
+        net_pnl_pct = (proceeds - fee - (actual_qty * entry)) / entry_value * 100
         log.info(f"🔴 SELL [{reason}] {cb:10s}  qty={actual_qty:.6f}  @ ${price:.2f}  "
-                 f"PnL={pnl:+.2f}%  fee=${fee:.2f}")
+                 f"PnL={pnl_raw:+.2f}%  fee=${fee:.2f}  slippage={slippage_ticks:+.3f}%(-${slippage_cost:.2f})  "
+                 f"net={net_pnl_pct:+.2f}%")
         try:
             r = self.ex.create_market_sell_order(cb, actual_qty)
             self.portfolio.cash += proceeds
@@ -460,8 +506,14 @@ class LiveTrader:
             self.portfolio.trades.append({
                 "time": datetime.now().isoformat(), "pair": cb,
                 "side": "SELL", "qty": actual_qty, "price": price,
-                "entry": entry, "pnl": round(pnl, 2), "fee": round(fee, 2),
+                "entry": entry, "pnl_raw": round(pnl_raw, 2), "fee": round(fee, 2),
+                "slippage_ticks": round(slippage_ticks, 4),
+                "slippage_cost": round(slippage_cost, 2),
+                "net_pnl_pct": round(net_pnl_pct, 2),
                 "reason": reason})
+            # Clean up slippage tracker on full exit
+            if new_qty <= 0.001:
+                self._expected_entry_px.pop(cb, None)
             log.info(f"   Order OK: {r.get('id', '?')}")
         except Exception as e:
             log.error(f"   SELL FAILED: {e}")
@@ -491,9 +543,33 @@ class LiveTrader:
 
         # ── BTC Market Regime Detection ────────────────────────────────────────
         btc_regime = self._btc_regime()
-        self._regime_cfg = self._apply_regime(btc_regime)
-        regime_cfg = self._regime_cfg
+        regime_cfg = self._apply_regime(btc_regime)
         regime_tag = f"[{btc_regime['regime']} BTC ADX={btc_regime['adx']} {btc_regime['trend']}]"
+
+        # ── MONITOR 1: Regime switching frequency ────────────────────────────
+        now = time.time()
+        # Prune regime history older than 24h
+        self._regime_history = [(ts, old, new) for ts, old, new in self._regime_history
+                                 if now - ts < 86400]
+        if self._prev_regime is not None and self._prev_regime != btc_regime['regime']:
+            self._regime_history.append((now, self._prev_regime, btc_regime['regime']))
+            log.info(f"  🔁 REGIME SWITCH: {self._prev_regime} → {btc_regime['regime']}")
+        recent_switches = len(self._regime_history)
+        if recent_switches > 5:
+            self._regime_hold_until = now + 3600   # 1h hold zone
+            log.warning(f"  ⚠️  Regime flip flop ({recent_switches}/24h) — TREND track paused 1h")
+        if self._regime_hold_until and now < self._regime_hold_until:
+            regime_cfg = dict(regime_cfg)          # copy to avoid mutating shared dict
+            regime_cfg["allow_trend"] = False
+            regime_tag += " [HOLD]"
+        elif self._regime_hold_until and now >= self._regime_hold_until:
+            self._regime_hold_until = None
+            log.info("  ✅ TREND track resumed after hold zone")
+
+        # Apply regime (override trend if in hold)
+        self._regime_cfg = regime_cfg
+        self._prev_regime = btc_regime['regime']
+
         log.info(f"  {regime_tag}  Trend={'✓ ON' if regime_cfg['allow_trend'] else '✗ OFF'}  MaxActive={regime_cfg['max_active']}  SL={regime_cfg['sl']*100:.0f}%  TP1={regime_cfg['tp1']*100:.0f}%  TP2={regime_cfg['tp2']*100:.0f}%")
 
         eq = self.portfolio.equity(self.prices)
@@ -550,6 +626,14 @@ class LiveTrader:
                 # Track 1: Pullback — RSI oversold + MA bullish
                 pullback_4h = (sig == "BUY" and rsi < rsi_buy)
 
+                # ── MONITOR 2: PULLBACK fill rate (RANGE only) ─────────────────
+                in_range = (btc_regime['regime'] == "RANGE")
+                if in_range and not in_pos and rsi < rsi_buy:
+                    # 24h reset window
+                    if self._pb_eval_reset is None or (now - self._pb_eval_reset) >= 86400:
+                        self._pb_eval = 0; self._pb_entries = 0; self._pb_eval_reset = now
+                    self._pb_eval += 1   # opportunity seen
+
                 # Track 2: Trend-follow — controlled by BTC regime
                 mac = ind["ma_cross"][-1]
                 mac_h = ind["macd_h"][-1]
@@ -568,6 +652,10 @@ class LiveTrader:
 
                 if not entry_ok:
                     continue
+
+                # Track PB entries
+                if entry_reason == "PULLBACK_4H":
+                    self._pb_entries += 1
 
                 # ── Fee filter: skip if TP2 net of fees < minimum ──────────────
                 tp2_raw = regime_cfg["tp2"]
@@ -608,6 +696,18 @@ class LiveTrader:
         active = list(self.portfolio.positions.keys())
         log.info(f"[PORT] Equity=${eq:.2f}  Ret={ret:+.2f}%  DD={dd:+.2f}%  "
                  f"Cash=${self.portfolio.cash:.2f}  Active={active}")
+
+        # ── MONITOR 2: PULLBACK fill rate summary ──────────────────────────────
+        # btc_regime captured from start of tick for summary logging
+        current_regime = self._prev_regime if self._prev_regime else "N/A"
+        if self._pb_eval_reset and (now - self._pb_eval_reset) >= 86400:
+            self._pb_eval = 0; self._pb_entries = 0; self._pb_eval_reset = now
+        if self._pb_eval > 0:
+            fill_rate = self._pb_entries / self._pb_eval * 100
+            log.info(f"  📊 [PB FILL RATE] {self._pb_entries}/{self._pb_eval} = {fill_rate:.0f}% (24h window)")
+        elif self._pb_eval == 0 and current_regime == "RANGE":
+            log.info(f"  📊 [PB FILL RATE] no RSI<38 opportunities yet in this RANGE window")
+
         self._save()
 
     def _save(self):
@@ -628,6 +728,13 @@ class LiveTrader:
             "_last_score_at":  self._last_score_at,
             "_blacklist":      {k: v for k, v in self._blacklist.items()},
             "_rotation_count": self._rotation_count,
+            "_prev_regime":     self._prev_regime,
+            "_regime_history":  self._regime_history,
+            "_regime_hold_until": self._regime_hold_until,
+            "_pb_eval":         self._pb_eval,
+            "_pb_entries":      self._pb_entries,
+            "_pb_eval_reset":   self._pb_eval_reset,
+            "_expected_entry_px": self._expected_entry_px,
         }
         with open("/tmp/trading_output/live_state.json", "w") as f:
             json.dump(state, f, indent=2)
