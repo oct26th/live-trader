@@ -8,16 +8,17 @@ Active development is on **`master`**, not `main`. `main` only contains the init
 
 ## Running
 
-Single-file bot, no build step, no test suite:
+v4 is a modular package. No build step, no test suite:
 
 ```bash
-python live_trader_v3.py
+pip install -r requirements.txt
+python main.py
 ```
 
 Paths the script expects (it does **not** create or validate them beyond one `os.path.exists` check):
 
-- `/opt/data/trading_bot/.env` — loaded via `load_dotenv`; must define `COINBASE_API_KEY`, `COINBASE_API_SECRET`.
-- `/tmp/trading_output/best_params_4h.json` — per-symbol indicator params from an upstream optimizer. `main()` exits with an error if missing. State is also written back to `/tmp/trading_output/live_state.json`, so the directory must exist.
+- `/opt/data/trading_bot/.env` — loaded via `load_dotenv`; must define `COINBASE_API_KEY`, `COINBASE_API_SECRET`, optionally `DISCORD_WEBHOOK_URL`.
+- `/tmp/trading_output/best_params_4h.json` — per-symbol indicator params from an upstream optimizer. `main()` exits with an error if missing. State is also written to `/tmp/trading_output/live_state.json`, so the directory must exist.
 - `/tmp/trading_logs/` — auto-created; daily log file `live_YYYYMMDD.log`.
 
 SIGINT/SIGTERM trigger `LiveTrader.stop()` → `_save()` flushes state before exit.
@@ -32,19 +33,49 @@ The README describes the *strategy design*, but its "技術棧" section does not
 
 The regime parameter table in the README (SL −3/−4/−5%, TP1 5/6/8%, TP2 10/12/15%, MaxActive 2/1/3 for RANGE/TRANSITION/TRENDING) accurately matches `_apply_regime()`.
 
+## Module Map
+
+**v4 Structure:**
+
+- `config.py` — all constants, SYMBOL_MAP, REGIME_PARAMS, paths
+- `indicators.py` — _ema, _rsi, _adx, compute, signal_at
+- `portfolio.py` — Portfolio class (cash, positions, equity)
+- `exchange.py` — unified Binance/Coinbase interface (fetch_ohlcv, to_cb/to_bin)
+- `state.py` — save_state, load_state (with 24h TTL and position reconciliation)
+- `notifier.py` — DiscordNotifier (hourly digest, silent fail if webhook not set)
+- `trader.py` — LiveTrader class (350 lines, modular)
+- `main.py` — entry point, logging, signal handlers
+- `archive_v3.py` — original 668-line version (reference only)
+
+All entry points: `python main.py` → load config → init trader → run event loop.
+
 ## Architecture
 
-### Two-exchange split (namespace gotcha)
+### Two-exchange split (namespace clarity via exchange.py)
 
-Market data from Binance, orders to Coinbase Advanced. Every symbol has two names kept in sync via `SYMBOL_MAP` (e.g. `BTC/USDT` → `BTC-USD`) and reverse `CB_TO_BIN`:
+Market data from Binance, orders to Coinbase Advanced. `exchange.py` centralizes all exchange logic:
 
-- `fetch_close()` / `fetch_ohlcv()` use `ccxt.binance` (no auth) for 4H and 1H OHLCV.
-- `get_exchange()`, `_buy`, `_sell` use `ccxt.coinbaseadvanced` with API keys from env.
-- `Portfolio.positions` is keyed by **cb_sym**. `_active_set`, `_blacklist`, `_pool_scores`, `params`, `SYMBOL_MAP` keys are all **bin_sym**. Anything touching both must translate explicitly.
+- `fetch_ohlcv(bin_sym, timeframe, limit)` → (closes, highs, lows) from Binance
+- `fetch_close(bin_sym)` → closes only
+- `to_cb(bin_sym)` → convert "BTC/USDT" to "BTC-USD"
+- `to_bin(cb_sym)` → convert "BTC-USD" to "BTC/USDT"
+- `get_coinbase_exchange()` → authenticated Coinbase Advanced
 
-### BTC regime-switching (the v3 core idea)
+trader.py imports only these four functions from exchange, never touches ccxt directly. `Portfolio.positions` is keyed by **cb_sym**. `_active_set`, `_blacklist`, `_pool_scores`, `params`, `SYMBOL_MAP` keys are all **bin_sym**. All conversions go through the exchange functions or SYMBOL_MAP.
 
-Every `tick()` starts by running `_btc_regime()` on BTC/USDT 4H: ADX classifies the market as `RANGE` (<25), `TRANSITION` (25–40), or `TRENDING` (>40). `_apply_regime()` returns a dict stored on `self._regime_cfg` with four dials:
+### State Restoration (v4 addition)
+
+On `authenticate()`, after loading live Coinbase balances, `load_state(self)` attempts to restore from `/tmp/trading_output/live_state.json`:
+- Only if file exists and is < 24h old
+- Only restores fields corresponding to live positions (avoids ghost records)
+- Restores: `_entry_px`, `_peak_equity`, `_partial_sells`, `_active_set`, `_blacklist` (filtered by expiry), `_pause_until` (if future), rotation/score timestamps, rotation count
+- Logs `🔁 State restored from {timestamp}` on success
+
+**Critical**: Without this, every restart clears stop-loss levels, TP progress, blacklist, and peak equity — defeating risk management. v4 fixes this.
+
+### BTC regime-switching
+
+Every `tick()` calls `_btc_regime()` on BTC/USDT 4H: ADX classifies the market as `RANGE` (<25), `TRANSITION` (25–40), or `TRENDING` (>40). `_apply_regime()` looks up the regime in `config.REGIME_PARAMS` and returns the corresponding dict, stored in `self._regime_cfg` with four dials:
 
 | field         | RANGE | TRANSITION | TRENDING |
 |---------------|-------|------------|----------|
@@ -67,13 +98,13 @@ Inside `tick()`, a non-held symbol must pass **one** of these on 4H data to buy:
 
 Before sizing an entry, estimates round-trip fees as `TAKER_FEE * (1 + tp1/2 + tp2/2)` and skips if `tp2 - fees < MIN_NET_PROFIT (3%)`. Uses the regime-adjusted TP levels, so RANGE coins (TP2=10%) are more easily filtered out than TRENDING ones (TP2=20%).
 
-### Active-set rotation (separate from entry logic)
+### Active-set rotation (fixed in v4)
 
 20-coin pool in `SYMBOL_MAP`; only the top-N by `_score_pool()` can receive new buys.
 
 - `_score_pool()` weights low RSI + bullish MA cross + positive MACD hist + 20-bar volatility; recomputed hourly (`SCORE_INTERVAL`).
-- `_do_rotation()` every 14 days: refresh scores, pick top `MAX_ACTIVE` (3) non-blacklisted non-held as `_active_set`, force-sell any open position no longer in the set (reason `ROTATION`).
-- **Gotcha**: rotation uses the class constant `MAX_ACTIVE = 3` while entry allocation divides by `regime_cfg["max_active"]` (which can be 1 or 2). The "slot count" in RANGE/TRANSITION regimes is therefore implicit in sizing, not in rotation size.
+- `_do_rotation()` every 14 days: refresh scores, pick top `self._regime_cfg["max_active"]` (3/1/2) non-blacklisted non-held as `_active_set`, force-sell any open position no longer in the set (reason `ROTATION`).
+- **v4 fix**: rotation now uses `regime_cfg["max_active"]` instead of class constant `MAX_ACTIVE = 3`, so rotation size matches entry allocation size (RANGE=2, TRANSITION=1, TRENDING=3).
 
 ### Risk layers inside `tick()` (order matters)
 
@@ -96,16 +127,14 @@ Before sizing an entry, estimates round-trip fees as `TAKER_FEE * (1 + tp1/2 + t
 
 `_btc_regime()` hard-codes its own param set (MA 20/50, MACD 12/26/9, RSI 14) and does **not** use the params file.
 
-### Persisted state, restart behaviour
+### Discord Integration (v4 addition)
 
-`_save()` writes a single JSON with portfolio, peak, pause/rotation/score timestamps, blacklist, partial-sell progress, trade log. There is **no load path** — `authenticate()` rebuilds `positions` from live Coinbase balances, but these fields reset on every restart:
+`notifier.py` sends hourly status digests via Discord webhook if `DISCORD_WEBHOOK_URL` env var is set.
+- Throttled to max 1 per hour (via `_last_notify_at`).
+- Sends after every `tick()` completes.
+- Silent fail if webhook URL not set or request times out.
+- Includes: regime (ADX), portfolio (equity, return, DD), positions, active set, timestamp.
 
-- `_entry_px` — lost → stop-loss and TP pct calculations use the next observed buy price.
-- `_peak_equity` — resets to current USD cash.
-- `_partial_sells`, `_blacklist`, `_active_set`, `_pause_until`.
+### Code Removal in v4
 
-This is load-bearing for any reasoning about behaviour after a redeploy or crash.
-
-### Unused code to be aware of
-
-`_1h_signal()` is defined but not called anywhere in `tick()` — entry logic is purely 4H. Don't assume it's wired in.
+- `_1h_signal()` — never called, removed per Variant C findings (1H signals are noise). Available in archive_v3.py if needed.
