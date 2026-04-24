@@ -20,6 +20,7 @@ def save_state(trader):
             "positions": trader.portfolio.positions,
             "trades": trader.portfolio.trades,
         },
+        "_entry_px": trader._entry_px,
         "_peak_equity": trader._peak_equity,
         "_pause_until": trader._pause_until,
         "_partial_sells": trader._partial_sells,
