@@ -46,6 +46,15 @@ def fetch_close(bin_sym, timeframe='4h', limit=300):
     return closes
 
 
+def fetch_1d_closes(bin_sym, limit=250):
+    """
+    Fetch 1D closes from Binance (for momentum rotation strategy).
+    Needs ≥ MA200 + lookback window, so default limit=250.
+    Returns numpy array or None on error.
+    """
+    return fetch_close(bin_sym, timeframe='1d', limit=limit)
+
+
 def to_cb(bin_sym):
     """Convert Binance symbol to Coinbase (e.g. "BTC/USDT" -> "BTC-USD")."""
     return SYMBOL_MAP.get(bin_sym, bin_sym)

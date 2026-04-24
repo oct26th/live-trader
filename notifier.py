@@ -7,9 +7,10 @@ from datetime import datetime
 class DiscordNotifier:
     """Send hourly trade reports via Discord webhook."""
 
-    def __init__(self):
+    def __init__(self, paper_mode: bool = False):
         self.webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
         self.last_notify_at = None
+        self.paper_mode = paper_mode
 
     def should_notify(self, current_time):
         """Check if enough time has passed since last notification."""
@@ -35,9 +36,10 @@ class DiscordNotifier:
         positions_str = ", ".join(trader.portfolio.positions.keys()) or "None"
         active_str = ", ".join(sorted(trader._active_set)) or "None"
 
+        title_prefix = "🧪 [PAPER] " if self.paper_mode else "🤖 "
         embed = {
-            "title": "🤖 Live Trader v4",
-            "color": 0x00FF00 if ret > 0 else 0xFF0000,
+            "title": f"{title_prefix}Live Trader v4",
+            "color": 0x888888 if self.paper_mode else (0x00FF00 if ret > 0 else 0xFF0000),
             "fields": [
                 {
                     "name": "Market Regime",

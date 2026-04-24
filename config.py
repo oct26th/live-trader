@@ -1,4 +1,5 @@
 """Live Trader v4 — Configuration and Constants"""
+import os
 
 # ── 20-Coin Observation Pool ──────────────────────────────────────────────────
 SYMBOL_MAP = {
@@ -77,7 +78,24 @@ REGIME_PARAMS = {
 # ── Paths ─────────────────────────────────────────────────────────────────────
 PARAMS_PATH = "/tmp/trading_output/best_params_4h.json"
 STATE_PATH = "/tmp/trading_output/live_state.json"
+PAPER_STATE_PATH = "/tmp/trading_output/paper_state.json"
 LOG_DIR = "/tmp/trading_logs"
+
+# ── Variant A (Momentum Rotation) — Paper Mode ────────────────────────────────
+# Controls whether trader_momentum.py executes real orders or logs-only.
+# Default: true (paper). Flip to "false" only after passing shipping criteria
+# documented in CLAUDE.md §5.
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+
+# Best params from 32-combo sweep (2026-04-24). See CLAUDE.md §5 Decision Log.
+MOMENTUM_LOOKBACK_DAYS = 30       # 20d log-return window (was 20; 30 filters alt noise)
+MOMENTUM_TOP_K = 5                # hold top-5 equally weighted
+MOMENTUM_SL = -0.10               # per-coin stop-loss (−10%)
+MOMENTUM_VOL_CAP = 0.06           # exclude coins with 30d daily σ > 6% (sweep sweet spot)
+MOMENTUM_VOL_LOOKBACK_DAYS = 30
+MOMENTUM_MA200_PERIOD = 200       # BTC 1D MA200 market filter
+MOMENTUM_REBALANCE_WEEKDAY = 6    # Sunday UTC 00:00
+MOMENTUM_INITIAL_PAPER_CASH = 1000.0  # paper starts at $1000 so 1 paper $ ~= 2 real $
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
