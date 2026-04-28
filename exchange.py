@@ -55,6 +55,13 @@ def fetch_1d_closes(bin_sym, limit=250):
     return fetch_close(bin_sym, timeframe='1d', limit=limit)
 
 
+def fetch_1d_ohlcv(bin_sym, limit=250):
+    """
+    Fetch 1D (closes, highs, lows) for trend-following strategies that need ATR.
+    """
+    return fetch_ohlcv(bin_sym, timeframe='1d', limit=limit)
+
+
 def to_cb(bin_sym):
     """Convert Binance symbol to Coinbase (e.g. "BTC/USDT" -> "BTC-USD")."""
     return SYMBOL_MAP.get(bin_sym, bin_sym)
