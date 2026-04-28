@@ -8,6 +8,7 @@ Entry point:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
@@ -24,6 +25,7 @@ import requests
 from config import (
     ARENA_INITIAL_CASH,
     ARENA_MA200_PERIOD,
+    ARENA_STATE_DIR,
     ARENA_STRATEGIES,
     DRY_RUN,
     LOG_DIR,
@@ -31,7 +33,7 @@ from config import (
     SYMBOL_MAP,
 )
 from exchange import fetch_1d_ohlcv
-from strategies import MarketData, Strategy, build_strategy
+from strategies import MarketData, PassiveStrategy, Strategy, build_strategy
 
 BTC_BIN = "BTC/USDT"
 LOOKBACK_BUFFER = 70  # extra history on top of MA200 for any lookback variants
@@ -126,6 +128,132 @@ class ArenaNotifier:
             logging.getLogger("arena").warning(f"Discord post failed: {exc}")
 
 
+# ── Event detector ───────────────────────────────────────────────────────────
+class ArenaEventDetector:
+    """Detect noteworthy state transitions and fire dedicated Discord alerts.
+
+    Currently tracks:
+    - FIRST_ENTRY: an active strategy (Momentum/Trend) opens its first-ever
+      paper position. Filtered to active strategies only — passive D/E
+      benchmarks deploy on tick 1 which is uninteresting.
+    - FILTER_FLIP_ON: BTC 1D close crosses above MA200 from below (across ticks).
+
+    Persisted to arena_events.json so the same event isn't re-announced after
+    arena restart.
+    """
+
+    EVENTS_PATH = f"{ARENA_STATE_DIR}/arena_events.json"
+
+    def __init__(self) -> None:
+        self.log = logging.getLogger("arena.events")
+        self._announced: set[tuple[str, str]] = set()  # (event_type, key)
+        self._last_filter_state: bool | None = None
+        self._load()
+
+    def _load(self) -> None:
+        if not os.path.exists(self.EVENTS_PATH):
+            return
+        try:
+            with open(self.EVENTS_PATH) as f:
+                data = json.load(f)
+            self._announced = {tuple(e) for e in data.get("announced", [])}
+            self._last_filter_state = data.get("last_filter_state")
+        except (IOError, json.JSONDecodeError):
+            pass
+
+    def _save(self) -> None:
+        os.makedirs(ARENA_STATE_DIR, exist_ok=True)
+        with open(self.EVENTS_PATH, "w") as f:
+            json.dump({
+                "announced": [list(e) for e in sorted(self._announced)],
+                "last_filter_state": self._last_filter_state,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, f, indent=2)
+
+    def detect(self, strategies: list[Strategy], md: MarketData) -> list[dict]:
+        events: list[dict] = []
+
+        # ── FIRST_ENTRY (active strategies only) ────────────────────────────
+        for s in strategies:
+            if isinstance(s, PassiveStrategy):
+                continue  # passive deploys on tick 1, not noteworthy
+            key = ("FIRST_ENTRY", s.name)
+            if key in self._announced:
+                continue
+            if len(s.portfolio.positions) > 0:
+                events.append({
+                    "type": "FIRST_ENTRY",
+                    "strategy": s.name,
+                    "label": s.label,
+                    "positions": dict(s.portfolio.positions),
+                    "entry_px": dict(s._entry_px),
+                    "btc_close": md.btc_close,
+                    "btc_ma200": md.btc_ma200,
+                })
+                self._announced.add(key)
+
+        # ── FILTER_FLIP_ON (BTC crosses above MA200 across ticks) ───────────
+        current = md.btc_close > md.btc_ma200 if md.btc_close and md.btc_ma200 else False
+        if self._last_filter_state is False and current is True:
+            events.append({
+                "type": "FILTER_FLIP_ON",
+                "btc_close": md.btc_close,
+                "btc_ma200": md.btc_ma200,
+            })
+        self._last_filter_state = current
+
+        if events:
+            self._save()
+        return events
+
+
+def post_event_alert(event: dict, log: logging.Logger) -> None:
+    """Send a dedicated Discord embed for a single event (independent of digest)."""
+    webhook = os.getenv("DISCORD_WEBHOOK_URL", "")
+    if not webhook:
+        return
+
+    if event["type"] == "FIRST_ENTRY":
+        positions_str = ", ".join(
+            f"`{cb}` @ ${px:.4f}"
+            for cb, px in event["entry_px"].items()
+        ) or "none"
+        embed = {
+            "title": f"🚀 [{event['strategy']}] FIRST ENTRY",
+            "description": event["label"],
+            "color": 0xFFAA00,
+            "fields": [
+                {"name": "Positions", "value": positions_str, "inline": False},
+                {
+                    "name": "Market",
+                    "value": f"BTC ${event['btc_close']:,.0f} | MA200 ${event['btc_ma200']:,.0f}",
+                    "inline": False,
+                },
+            ],
+            "footer": {"text": f"Paper Arena event @ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"},
+        }
+    elif event["type"] == "FILTER_FLIP_ON":
+        embed = {
+            "title": "🟢 BTC FILTER FLIPPED ON",
+            "description": "BTC 1D close just crossed above MA200. Momentum strategies (A/A'/A'') will pick top-K on next Sunday rebalance.",
+            "color": 0x00FF00,
+            "fields": [{
+                "name": "Market",
+                "value": f"BTC ${event['btc_close']:,.0f} > MA200 ${event['btc_ma200']:,.0f}",
+                "inline": False,
+            }],
+            "footer": {"text": f"Paper Arena event @ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"},
+        }
+    else:
+        return
+
+    try:
+        requests.post(webhook, json={"embeds": [embed]}, timeout=5)
+        log.info(f"🚀 Event alert sent: {event['type']}")
+    except Exception as exc:
+        log.warning(f"Event alert failed: {exc}")
+
+
 # ── Arena ────────────────────────────────────────────────────────────────────
 class PaperArena:
     def __init__(self) -> None:
@@ -134,6 +262,7 @@ class PaperArena:
         for s in self.strategies:
             s.load()
         self.notifier = ArenaNotifier()
+        self.events = ArenaEventDetector()
         self.running = True
 
     def tick(self) -> None:
@@ -148,6 +277,11 @@ class PaperArena:
 
         for s in self.strategies:
             s.tick(md)
+
+        # Event detection runs after strategy ticks so position changes are visible
+        for ev in self.events.detect(self.strategies, md):
+            self.log.info(f"🚀 EVENT: {ev['type']} {ev.get('strategy', '')}")
+            post_event_alert(ev, self.log)
 
         self.notifier.send(self.strategies, md)
         self._log_summary()

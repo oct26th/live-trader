@@ -365,3 +365,21 @@ DRY_RUN=true python3 paper_arena.py
 
 Hourly tick fetches 1D OHLCV for all 20 SYMBOL_MAP coins (≈3-5s), feeds shared
 `MarketData` to all 6 strategies, prints standings table to log + Discord webhook.
+
+### Event alerts (separate from hourly digest)
+
+`ArenaEventDetector` runs after every tick. Fires dedicated Discord embeds — distinct
+from the periodic standings digest — for noteworthy state transitions:
+
+- **FIRST_ENTRY** — Active strategy (momentum/trend) opens its first-ever paper
+  position. Passive D/E excluded (their tick-1 deploy is uninteresting). Each strategy
+  can only fire this event once.
+- **FILTER_FLIP_ON** — BTC 1D close just crossed above MA200 (was below last tick).
+  Strategies will pick top-K on the next Sunday rebalance. Fires every transition
+  (not just first-ever), so a flop-on/off/on sequence will alert each "on".
+
+Persisted to `/tmp/trading_output/arena_events.json` so restarts don't re-fire already-
+announced events.
+
+Future event types (not yet implemented, easy to add): SL_HIT, REBALANCE_LARGE_TURNOVER,
+BENCHMARK_BEATEN (active strategy first surpasses D's equity).
