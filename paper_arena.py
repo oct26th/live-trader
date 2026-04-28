@@ -137,6 +137,11 @@ class ArenaEventDetector:
       paper position. Filtered to active strategies only — passive D/E
       benchmarks deploy on tick 1 which is uninteresting.
     - FILTER_FLIP_ON: BTC 1D close crosses above MA200 from below (across ticks).
+    - BENCHMARK_BEATEN: an active strategy's equity first surpasses D
+      (BTC buy & hold). Gated on FIRST_ENTRY having already fired so early
+      fee-drag wins (A at $1000 cash > D at $994 from entry fee) don't
+      count. This is the single most meaningful event in the arena —
+      alpha exists.
 
     Persisted to arena_events.json so the same event isn't re-announced after
     arena restart.
@@ -172,6 +177,11 @@ class ArenaEventDetector:
 
     def detect(self, strategies: list[Strategy], md: MarketData) -> list[dict]:
         events: list[dict] = []
+        # Snapshot at start of detect — used by BENCHMARK_BEATEN gate so it can't
+        # see FIRST_ENTRY events that fire in this same tick. This prevents the
+        # fragile "A just entered (cash + new fee-laden position) vs D's
+        # already-fee-dragged equity" comparison from scoring an instant alpha.
+        announced_at_tick_start = set(self._announced)
 
         # ── FIRST_ENTRY (active strategies only) ────────────────────────────
         for s in strategies:
@@ -201,6 +211,31 @@ class ArenaEventDetector:
                 "btc_ma200": md.btc_ma200,
             })
         self._last_filter_state = current
+
+        # ── BENCHMARK_BEATEN (active strategy first surpasses D's equity) ────
+        d_strategy = next((s for s in strategies if s.name == "D"), None)
+        if d_strategy is not None:
+            d_equity = d_strategy.equity()
+            for s in strategies:
+                if isinstance(s, PassiveStrategy):
+                    continue  # E vs D comparison not meaningful
+                key = ("BENCHMARK_BEATEN", s.name)
+                if key in self._announced:
+                    continue
+                # Gate: FIRST_ENTRY must have fired in a PREVIOUS tick (not this one)
+                # — uses snapshot taken before FIRST_ENTRY processing in this tick.
+                if ("FIRST_ENTRY", s.name) not in announced_at_tick_start:
+                    continue
+                if s.equity() > d_equity:
+                    events.append({
+                        "type": "BENCHMARK_BEATEN",
+                        "strategy": s.name,
+                        "label": s.label,
+                        "strategy_equity": s.equity(),
+                        "d_equity": d_equity,
+                        "lead_pct": (s.equity() / d_equity - 1) * 100 if d_equity > 0 else 0,
+                    })
+                    self._announced.add(key)
 
         if events:
             self._save()
@@ -240,6 +275,25 @@ def post_event_alert(event: dict, log: logging.Logger) -> None:
             "fields": [{
                 "name": "Market",
                 "value": f"BTC ${event['btc_close']:,.0f} > MA200 ${event['btc_ma200']:,.0f}",
+                "inline": False,
+            }],
+            "footer": {"text": f"Paper Arena event @ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"},
+        }
+    elif event["type"] == "BENCHMARK_BEATEN":
+        embed = {
+            "title": f"🏆 [{event['strategy']}] BEAT BTC HODL",
+            "description": (
+                f"{event['label']} — first time equity surpassed passive BTC benchmark. "
+                f"Alpha hypothesis confirmed."
+            ),
+            "color": 0x00FF88,
+            "fields": [{
+                "name": "Equity",
+                "value": (
+                    f"`{event['strategy']}`: ${event['strategy_equity']:.2f}\n"
+                    f"`D` (HODL): ${event['d_equity']:.2f}\n"
+                    f"Lead: **+{event['lead_pct']:.2f}%**"
+                ),
                 "inline": False,
             }],
             "footer": {"text": f"Paper Arena event @ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"},
