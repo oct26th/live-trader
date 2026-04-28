@@ -14,15 +14,16 @@ Active development is on **`master`**, not `main`. `main` only contains the init
 |---------|----------|---------|-----------|
 | v3 | Variant C (monolithic 668-line script) | `archive_v3.py` | ✅ STILL running via `python3 live_trader_v3.py` |
 | v4 | Variant C (modular) | `trader.py` + `main.py` | ❌ Uploaded but not started — **skipped** |
-| **v5-paper** | **Variant A momentum rotation, DRY_RUN=true** | `trader_momentum.py` + `main_paper.py` | Target deployment |
-| v5-live | Variant A + real orders | Same + `DRY_RUN=false` env | Future (after shipping criteria §5) |
+| v5-paper-single | Variant A only (single strategy) | `trader_momentum.py` + `main_paper.py` | ❌ Superseded by arena |
+| **v5-arena** | **6 strategies in parallel paper bake-off** | `strategies.py` + `paper_arena.py` | Target deployment |
+| v5-live | Winner from arena → real orders | Selected strategy + `DRY_RUN=false` | Future (after 60-90d arena) |
 
 **Why v4 was skipped:** v3 and v4 are mathematically equivalent (both Variant C). Three backtests
 (2026-04-24) proved Variant C structurally unprofitable on 4H across all market regimes. Switching
 v3→v4 = cleaner code, same losing strategy. Not worth deploying.
 
-**Migration path:** v3 → v5-paper (direct skip), validate paper ≥30 days + BTC MA200 re-cross,
-then v5-paper → v5-live.
+**Migration path:** v3 → v5-arena (run 6 strategies for 60-90 days) → pick winner →
+flip just that one to v5-live.
 
 **The v4 refactor was still valuable** — it split the monolith into `config/indicators/portfolio/
 exchange/state/notifier` which v5 reuses. Don't delete v4 code, it's the foundation for v5.
@@ -305,3 +306,62 @@ Blind spot 2 can be observed as soon as the first rebalance fires — if top-5 a
 - ⏳ **Regime hold zone:** N/A under Variant A (no regimes).
 - ⏳ **PULLBACK fill rate:** Moot — PULLBACK track removed in migration.
 - ⏳ **Fee tracking:** Still needed for paper-mode validation vs backtest expectations.
+
+---
+
+## §6. Paper Arena — Multi-Strategy Bake-off
+
+Paper mode is zero-risk, so running multiple strategies in parallel costs nothing extra
+(one shared market-data fetch per tick, separate state files per strategy). Architecture
+implemented 2026-04-28.
+
+### Files
+
+- `strategies.py` — `Strategy` ABC + `MomentumStrategy` + `TrendFollowingStrategy` +
+  `PassiveStrategy` + `build_strategy()` factory.
+- `paper_arena.py` — `PaperArena` runs all strategies, fetches universe once per tick,
+  posts hourly Discord digest. Entry: `DRY_RUN=true python3 paper_arena.py`.
+- `config.ARENA_STRATEGIES` — locked candidate list (no post-hoc additions allowed).
+
+### Strategies (locked at 2026-04-28 launch)
+
+| Name | Type | Description |
+|------|------|-------------|
+| **A** | Momentum | top-5, 30d lookback, VOL=6%, SL=-10%, BTC MA200 filter (baseline) |
+| **A'** | Momentum | top-5, **60d** lookback (longer window test) |
+| **A''** | Momentum | **top-3**, 30d lookback (concentration test) |
+| **B** | Trend follow | BTC 1D, MA20/50 cross + 2×ATR trailing stop (different philosophy) |
+| **D** | Passive | 100% BTC buy & hold (must-beat benchmark) |
+| **E** | Passive | 60/40 BTC/ETH monthly rebalance (passive benchmark) |
+
+### Multiple-comparisons guardrails
+
+To avoid hindsight bias / overfitting from running many strategies:
+
+1. **Locked candidate list** — `ARENA_STRATEGIES` is set at launch; do NOT add new
+   strategies after observing returns. Adding a new strategy retroactively means it gets
+   to "see" the period before deciding to compete.
+2. **Sharpe over absolute return** — when comparing winners, look at risk-adjusted
+   return (Sharpe) not just total %. Highest return often comes with highest DD.
+3. **Full cycle requirement** — wait ≥60 days AND must include BTC MA200 re-cross
+   (filter ON event) before declaring a winner.
+4. **Benchmark check** — winning strategy must beat both D and E. If neither, the
+   "alpha" is illusory (just market exposure).
+
+### State files
+
+Each strategy persists to `/tmp/trading_output/paper_state_{name}.json`:
+- `cash`, `positions`, `entry_px`, `equity`, `peak_equity`, `max_dd_pct`
+- `trade_count`, `trades_tail` (last 50 closed trades)
+- `extra` (strategy-specific, e.g. `filter_on` for momentum, `trailing_high` for trend)
+
+The original `paper_state.json` (single-strategy) is deprecated but not deleted.
+
+### Running
+
+```
+DRY_RUN=true python3 paper_arena.py
+```
+
+Hourly tick fetches 1D OHLCV for all 20 SYMBOL_MAP coins (≈3-5s), feeds shared
+`MarketData` to all 6 strategies, prints standings table to log + Discord webhook.
