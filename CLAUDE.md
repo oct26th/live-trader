@@ -377,9 +377,14 @@ from the periodic standings digest — for noteworthy state transitions:
 - **FILTER_FLIP_ON** — BTC 1D close just crossed above MA200 (was below last tick).
   Strategies will pick top-K on the next Sunday rebalance. Fires every transition
   (not just first-ever), so a flop-on/off/on sequence will alert each "on".
+- **BENCHMARK_BEATEN** — Active strategy's equity first surpasses D (BTC HODL).
+  This is the **most meaningful** event in the arena — alpha confirmed. Gated on
+  FIRST_ENTRY having fired in a PREVIOUS tick (prevents fragile same-tick fee-drag
+  false positives). Each strategy fires this exactly once.
 
 Persisted to `/tmp/trading_output/arena_events.json` so restarts don't re-fire already-
 announced events.
 
-Future event types (not yet implemented, easy to add): SL_HIT, REBALANCE_LARGE_TURNOVER,
-BENCHMARK_BEATEN (active strategy first surpasses D's equity).
+Future event types (not yet implemented, easy to add):
+- `SL_HIT` — any strategy fires a stop-loss
+- `REBALANCE_LARGE_TURNOVER` — Sunday rebalance turns over >60% of portfolio
