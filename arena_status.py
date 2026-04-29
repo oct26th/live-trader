@@ -31,6 +31,26 @@ def fmt_pct(v: float, width: int = 7) -> str:
     return s.rjust(width)
 
 
+def _live_btc_filter() -> tuple[float | None, float | None, bool | None]:
+    """Fetch BTC 1D from Binance and compute filter state right now.
+
+    Returns (close, ma200, filter_on). All None on failure.
+    """
+    try:
+        import ccxt
+        import numpy as np
+        ex = ccxt.binance({"enableRateLimit": True})
+        bars = ex.fetch_ohlcv("BTC/USDT", "1d", limit=210)
+        if not bars or len(bars) < 200:
+            return None, None, None
+        closes = np.array([b[4] for b in bars], dtype=float)
+        ma200 = float(np.mean(closes[-200:]))
+        last = float(closes[-1])
+        return last, ma200, last > ma200
+    except Exception:
+        return None, None, None
+
+
 def main() -> int:
     files = sorted(glob.glob(f"{ARENA_STATE_DIR}/paper_state_*.json"))
     if not files:
@@ -50,12 +70,23 @@ def main() -> int:
     print(f"   📊  PAPER ARENA STATUS  —  {now}")
     print("═" * 80)
 
-    # ── Filter state ──────────────────────────────────────────────────────
+    # ── Filter state (live check, fallback to events.json) ───────────────
     events_path = f"{ARENA_STATE_DIR}/arena_events.json"
     events_data = load(events_path) or {}
-    last_filter = events_data.get("last_filter_state")
-    filter_str = "🟢 ON" if last_filter else ("🔴 OFF" if last_filter is False else "⚪ unknown")
-    print(f"   BTC filter state (vs MA200):   {filter_str}")
+
+    btc_close, btc_ma200, filter_on = _live_btc_filter()
+    if filter_on is None:
+        last_filter = events_data.get("last_filter_state")
+        filter_str = (
+            "🟢 ON (event log)" if last_filter is True
+            else "🔴 OFF (event log)" if last_filter is False
+            else "⚪ unknown"
+        )
+        print(f"   BTC filter state:   {filter_str}")
+    else:
+        icon = "🟢 ON " if filter_on else "🔴 OFF"
+        delta = (btc_close - btc_ma200) / btc_ma200 * 100
+        print(f"   BTC filter state:   {icon}    BTC ${btc_close:,.0f}  vs  MA200 ${btc_ma200:,.0f}   ({delta:+.2f}%)")
     print()
 
     # ── Standings ─────────────────────────────────────────────────────────
