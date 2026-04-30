@@ -48,6 +48,36 @@ def load_all_states() -> dict[str, dict]:
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
 
+def _annualization_factor(trades: list[dict]) -> float:
+    """sqrt(trades_per_year) derived from trade timestamps.
+
+    Returns 1.0 if fewer than 2 timestamped trades or span < 1 day — caller
+    should interpret Sharpe as per-trade in that case.
+    """
+    timestamps: list[datetime] = []
+    for t in trades:
+        ts_str = t.get("ts", "")
+        if not ts_str:
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            timestamps.append(ts)
+        except ValueError:
+            continue
+
+    if len(timestamps) < 2:
+        return 1.0
+
+    span_days = (max(timestamps) - min(timestamps)).total_seconds() / 86400.0
+    if span_days < 1.0:
+        return 1.0
+
+    trades_per_year = len(trades) * 365.0 / span_days
+    return math.sqrt(trades_per_year)
+
+
 def compute_metrics(s: dict) -> dict:
     """Compute evaluation metrics for one strategy state dict.
 
@@ -76,6 +106,15 @@ def compute_metrics(s: dict) -> dict:
     )
 
     # 4. Sharpe ratio
+    #
+    # We have per-trade returns, not daily returns, so we cannot multiply by
+    # sqrt(365) — that would inflate Sharpe by however many days separate
+    # trades. Instead, infer trades-per-year from trade timestamps and
+    # annualize as Sharpe_per_trade × sqrt(trades_per_year).
+    #
+    # Falls back to a per-trade Sharpe (no annualization) if timestamps are
+    # missing or span < 1 day, so the gate threshold (0.5) is still meaningful
+    # even in the early days of the paper run.
     if len(returns) < 5:
         sharpe = 0.0
         sortino = 0.0
@@ -83,12 +122,12 @@ def compute_metrics(s: dict) -> dict:
         mean_r = float(np.mean(returns))
         std_r = float(np.std(returns, ddof=1))
 
+        ann_factor = _annualization_factor(trades_tail)
+
         if std_r == 0.0:
-            # All returns identical — can happen when all positions are flat
             sharpe = 0.0
         else:
-            # Annualize: treat each trade as daily (proxy; no real timestamps needed)
-            sharpe = float((mean_r / std_r) * math.sqrt(365))
+            sharpe = float((mean_r / std_r) * ann_factor)
 
         # Sortino uses downside std (only negative returns in denominator)
         neg_returns = returns[returns < 0]
@@ -100,7 +139,7 @@ def compute_metrics(s: dict) -> dict:
             if downside_std == 0.0:
                 sortino = 0.0
             else:
-                sortino = float((mean_r / downside_std) * math.sqrt(365))
+                sortino = float((mean_r / downside_std) * ann_factor)
 
     # 5. Calmar ratio — deferred: fill in after all strategies computed (needs best Calmar)
     #    We compute the raw numerator/denominator here; caller handles the edge case.
@@ -118,6 +157,7 @@ def compute_metrics(s: dict) -> dict:
         "calmar_raw": calmar_raw,   # (return_pct, abs_dd_pct) — finalized in evaluate()
         "calmar": None,             # filled in by evaluate()
         "trade_count": trade_count,
+        "trades_sampled": len(trades_tail),
         "timestamp": s.get("timestamp", ""),
     }
 
@@ -250,23 +290,39 @@ def _fmt_pct(v: float, width: int = 7, sign: bool = True) -> str:
 
 
 def _period_days(states: dict[str, dict]) -> int:
-    """Estimate elapsed days from oldest timestamp to now."""
-    timestamps: list[datetime] = []
+    """Estimate elapsed days from oldest trade ts to most recent state ts.
+
+    Uses state timestamps as the "now" reference (not datetime.now), so the
+    metric is meaningful when evaluating snapshots taken in the past or when
+    the arena last ticked some time ago.
+    """
+    state_ts: list[datetime] = []
+    trade_ts: list[datetime] = []
+
+    def _parse(s: str) -> Optional[datetime]:
+        try:
+            ts = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts
+        except (ValueError, AttributeError):
+            return None
+
     for s in states.values():
-        ts_str = s.get("timestamp", "")
-        if ts_str:
-            try:
-                ts = datetime.fromisoformat(ts_str)
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                timestamps.append(ts)
-            except ValueError:
-                pass
-    if not timestamps:
+        ts = _parse(s.get("timestamp", "") or "")
+        if ts is not None:
+            state_ts.append(ts)
+        for t in s.get("trades_tail", []) or []:
+            tt = _parse(t.get("ts", "") or "")
+            if tt is not None:
+                trade_ts.append(tt)
+
+    if not state_ts:
         return 0
-    oldest = min(timestamps)
-    now = datetime.now(timezone.utc)
-    return max(0, (now - oldest).days)
+
+    latest = max(state_ts)
+    earliest = min(trade_ts) if trade_ts else min(state_ts)
+    return max(0, (latest - earliest).days)
 
 
 def print_report(result: dict, full: bool = False, states: Optional[dict] = None) -> None:
@@ -380,7 +436,7 @@ def print_report(result: dict, full: bool = False, states: Optional[dict] = None
             print(f"     Sharpe:       {m['sharpe']:.4f}")
             print(f"     Sortino:      {m['sortino']:.4f}")
             print(f"     Calmar:       {(m.get('calmar') or 0.0):.4f}")
-            print(f"     Win rate:     {m['win_rate_pct']:.1f}%  (from {len(result['all_metrics'][name].get('calmar_raw', (0,0)))} trade samples)")
+            print(f"     Win rate:     {m['win_rate_pct']:.1f}%  (from {m.get('trades_sampled', 0)} trade samples)")
             print(f"     Trade count:  {m['trade_count']}")
             print(f"     Last tick:    {m['timestamp'][:19].replace('T', ' ')}")
             print()
