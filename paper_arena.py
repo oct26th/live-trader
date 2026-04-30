@@ -339,6 +339,7 @@ class PaperArena:
 
         self.notifier.send(self.strategies, md)
         self._log_summary()
+        self._run_verification()
 
     def _log_summary(self) -> None:
         rows = sorted(self.strategies, key=lambda s: s.equity(), reverse=True)
@@ -350,6 +351,17 @@ class PaperArena:
                 f"  {s.name:>8s}  ${eq:>8.2f}  {ret:+6.2f}%  DD {s._max_dd*100:+5.1f}%  "
                 f"pos={len(s.portfolio.positions)}  trades={len(s.portfolio.trades)}"
             )
+
+    def _run_verification(self) -> None:
+        try:
+            from arena_verify import run_verification
+            result = run_verification()
+            if result["error_count"] > 0:
+                self.log.error(f"🚨 Verification ERRORS: {result['error_count']} — check arena_verification.json")
+            elif result["warning_count"] > 0:
+                self.log.warning(f"⚠️  Verification warnings: {result['warning_count']}")
+        except Exception as exc:
+            self.log.debug(f"Verification skipped: {exc}")
 
     def stop(self, *_args) -> None:
         self.log.info("⏹ Arena stopping — flushing all strategy state.")
