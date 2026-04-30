@@ -58,6 +58,22 @@ def load_state(path: str) -> dict[str, Any] | None:
         return None
 
 
+def load_state_with_reason(path: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Like load_state but reports why it failed.
+
+    Returns (state, error_reason). Exactly one is None.
+    """
+    try:
+        with open(path) as f:
+            return json.load(f), None
+    except FileNotFoundError:
+        return None, "file not found"
+    except (IOError, OSError) as exc:
+        return None, f"I/O error: {exc}"
+    except json.JSONDecodeError as exc:
+        return None, f"malformed JSON: {exc}"
+
+
 def _discover_state_files() -> dict[str, str]:
     """Return {name: path} for all paper_state_*.json files in ARENA_STATE_DIR."""
     pattern = os.path.join(ARENA_STATE_DIR, "paper_state_*.json")
@@ -336,11 +352,15 @@ def run_verification() -> dict[str, Any]:
 
     all_states: dict[str, dict[str, Any]] = {}
     missing: list[str] = []
+    corrupt: dict[str, str] = {}  # name -> reason (malformed JSON, I/O error, etc.)
 
     for name, path in state_files.items():
-        state = load_state(path)
+        state, reason = load_state_with_reason(path)
         if state is None:
-            missing.append(name)
+            if reason and "not found" not in reason:
+                corrupt[name] = reason
+            else:
+                missing.append(name)
         else:
             all_states[name] = state
 
@@ -388,12 +408,23 @@ def run_verification() -> dict[str, Any]:
     warning_count = sum(1 for v in per_strategy.values() if v["status"] == "WARNING")
     error_count = sum(1 for v in per_strategy.values() if v["status"] == "ERROR")
 
+    # Promote corrupt files to ERROR-status entries so they show up clearly.
+    for name, reason in corrupt.items():
+        per_strategy[name] = {
+            "status": "ERROR",
+            "issues": [f"State file unreadable: {reason}"],
+            "errors": [f"State file unreadable: {reason}"],
+            "warnings": [],
+        }
+        error_count += 1
+
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "ok_count": ok_count,
         "warning_count": warning_count,
         "error_count": error_count,
         "missing": missing,
+        "corrupt": corrupt,
         "strategies": {
             name: {
                 "status": v["status"],
@@ -438,7 +469,10 @@ def main() -> int:
 
     if result["missing"]:
         for name in result["missing"]:
-            print(f"⚠️  [{name}] State file missing or unreadable")
+            print(f"⚠️  [{name}] State file not found")
+    if result.get("corrupt"):
+        for name, reason in result["corrupt"].items():
+            print(f"❌ [{name}] State file unreadable: {reason}")
 
     # Summary line
     ok = result["ok_count"]
