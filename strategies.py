@@ -144,24 +144,47 @@ class Strategy(ABC):
         return f"{ARENA_STATE_DIR}/paper_state_{self.name}.json"
 
     def save(self) -> None:
-        os.makedirs(ARENA_STATE_DIR, exist_ok=True)
-        snapshot = {
-            "name": self.name,
-            "label": self.label,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "cash": self.portfolio.cash,
-            "positions": self.portfolio.positions,
-            "entry_px": self._entry_px,
-            "equity": self.equity(),
-            "peak_equity": self._peak_equity,
-            "max_dd_pct": self._max_dd * 100,
-            "last_rebalance_date": self._last_rebalance_date,
-            "trade_count": len(self.portfolio.trades),
-            "trades_tail": self.portfolio.trades[-50:],
-            "extra": self._extra,
-        }
-        with open(self.state_path(), "w") as f:
-            json.dump(snapshot, f, indent=2, default=str)
+        try:
+            os.makedirs(ARENA_STATE_DIR, exist_ok=True)
+            snapshot = {
+                "name": self.name,
+                "label": self.label,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "cash": self.portfolio.cash,
+                "positions": self.portfolio.positions,
+                "entry_px": self._entry_px,
+                "equity": self.equity(),
+                "peak_equity": self._peak_equity,
+                "max_dd_pct": self._max_dd * 100,
+                "last_rebalance_date": self._last_rebalance_date,
+                "trade_count": len(self.portfolio.trades),
+                "trades_tail": self.portfolio.trades[-50:],
+                "extra": self._extra,
+            }
+            # Atomic write: write to .tmp then rename. Avoids corruption if the
+            # process is killed mid-json.dump. Clean up the tmp file if any
+            # step fails so we don't leak orphans across restarts.
+            import tempfile
+            tmp_path: str | None = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", dir=ARENA_STATE_DIR, delete=False,
+                    suffix=".tmp", prefix=f"paper_state_{self.name}_",
+                ) as tmp:
+                    json.dump(snapshot, tmp, indent=2, default=str)
+                    tmp_path = tmp.name
+                os.replace(tmp_path, self.state_path())
+                tmp_path = None  # successfully renamed — nothing to clean
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+        except (IOError, OSError, TypeError) as exc:
+            self.log.error(f"save failed: {exc}", exc_info=True)
+            # Don't re-raise — losing one tick's snapshot is recoverable;
+            # taking down the arena is not.
 
     def load(self) -> None:
         path = self.state_path()

@@ -330,7 +330,16 @@ class PaperArena:
         )
 
         for s in self.strategies:
-            s.tick(md)
+            try:
+                s.tick(md)
+            except Exception as exc:
+                # Isolate per-strategy failures so a bug in one strategy doesn't
+                # take down the whole arena. Errors are logged and the next
+                # strategy continues. Strategy.tick() already wraps on_tick(),
+                # so this is mainly a backstop for save() / equity() failures.
+                self.log.error(
+                    f"Strategy {s.name} crashed in tick(): {exc}", exc_info=True
+                )
 
         # Event detection runs after strategy ticks so position changes are visible
         for ev in self.events.detect(self.strategies, md):

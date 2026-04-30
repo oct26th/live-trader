@@ -458,8 +458,11 @@ def print_report(result: dict, full: bool = False, states: Optional[dict] = None
         beat_str = " and ".join(beat_parts)
 
         print(f"   🏆 RECOMMENDATION: Deploy strategy {w_name}")
-        print(f"      Highest Sharpe ({w_sharpe:.2f}), {beat_str}")
-        print(f"      Run: python3 arena_migrate.py --strategy {w_name} --dry-run-phase 7d")
+        if beat_str:
+            print(f"      Highest Sharpe ({w_sharpe:.2f}), {beat_str}")
+        else:
+            print(f"      Highest Sharpe ({w_sharpe:.2f}) (no benchmarks available)")
+        print(f"      Run: python3 arena_migrate.py preflight --strategy {w_name}")
     else:
         print("   ⏳ No qualifying strategy found — extend paper period or review parameters")
         if note and "missing" in note.lower():
