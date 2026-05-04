@@ -1,7 +1,7 @@
 {
   "last_filter_on": null,
-  "last_check_date": "2026-04-27",
+  "last_check_date": "2026-05-04",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": false,
-  "notes": "Initial state. Live BTC price fetch failed (external API hosts blocked in this environment). Filter state from context: BTC was BELOW MA200 at paper-mode start (2026-04-24), so last_filter_on treated as false for next run comparison. Update manually or once network access is restored."
+  "notes": "External crypto APIs blocked in this environment (Binance, Kraken, CoinGecko, CryptoCompare all return 403/host-not-in-allowlist). Filter state remains unknown; last known context is BTC below MA200 at paper-mode start (2026-04-24). Will resolve once network access is available or environment changes. Day 10 of paper mode — no 30-day reconciliation trigger yet."
 }
