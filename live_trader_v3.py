@@ -100,7 +100,7 @@ def compute(close, p):
 
 def signal_at(ind, i, p):
     mac,mac_h,mx,rsi = ind["ma_cross"][i],ind["macd_h"][i],ind["mcross"][i],ind["rsi"][i]
-    c1 = (mac==1) and (mac_h>0) and (rsi<p["rsi_buy"])
+    c1 = (mac==1) and (mac_h>0) and (rsi<p.get("rsi_buy", 55))
     c2 = (mx==1) and (mac==1) and (30<rsi<55)
     if c1 or c2: return "BUY"
     if rsi>p["rsi_sell"] or mac<0: return "SELL"
@@ -429,7 +429,7 @@ class LiveTrader:
                 if sig != "BUY":
                     continue
 
-                rsi_buy = p.get("rsi_buy", 40)
+                rsi_buy = p.get("rsi_buy", 55)
                 rsi_floor = 20
                 if rsi >= rsi_buy:
                     continue
