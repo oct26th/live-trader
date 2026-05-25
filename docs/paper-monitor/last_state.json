@@ -1,9 +1,9 @@
 {
   "last_filter_on": false,
-  "last_check_date": "2026-05-18",
+  "last_check_date": "2026-05-25",
   "paper_start_date": "2026-04-24",
-  "reconciliation_posted": false,
-  "btc_close_approx": 78200,
-  "ma200_approx": 82300,
-  "notes": "Direct API access still blocked (Binance/CoinGecko 403). Filter state sourced from web search: BTC ~$78,200 (May 17-18 close), MA200 ~$82,300 (per CoinDesk/247WallSt May 15-17 coverage). BTC firmly below MA200 — filter=OFF, strategy idle. Day 24 of paper mode — 30-day reconciliation trigger fires next week."
+  "reconciliation_posted": true,
+  "btc_close_approx": 76817,
+  "ma200_approx": 81194,
+  "notes": "Direct API access still blocked (Binance/CoinGecko 403). Filter state sourced from web search: BTC ~$76,817 (May 25 2026, Kraken/CoinDesk consensus), MA200 ~$81,194 (per search results). BTC firmly below MA200 — filter=OFF, strategy idle. Day 31 of paper mode — 30-day reconciliation issue filed (#1)."
 }
