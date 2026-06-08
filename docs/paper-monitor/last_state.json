@@ -1,9 +1,9 @@
 {
   "last_filter_on": false,
-  "last_check_date": "2026-06-01",
+  "last_check_date": "2026-06-08",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 73586,
+  "btc_close_approx": 62000,
   "ma200_approx": 81000,
-  "notes": "Direct API access still blocked (Binance/CoinGecko/Kraken 403 — network allowlist). Filter state sourced from web search: BTC ~$73,586 (June 1 2026, multi-source consensus), MA200 ~$81,000 (est. from mid-May article citing $82,300 and trend since last check). BTC firmly below MA200 — filter=OFF, strategy idle. Day 38 of paper mode. No filter flip. Reconciliation issue already posted (reconciliation_posted=true). Quiet week."
+  "notes": "Direct API access still blocked (Binance/CoinGecko/Kraken 403 — network allowlist). Filter state sourced from web search: BTC ~$62,000 (June 8 2026, multi-source: OKX $62,917 / CoinGecko $60,949 / Coinbase $61,674), MA200 ~$81,000 (Bitcoin crossed below MA200 around May 21 2026 per cryptonomist article; last week est $81,000 unchanged). BTC firmly below MA200 — filter=OFF, strategy idle. Day 45 of paper mode. No filter flip (was false, still false). Reconciliation issue already posted. Quiet week — no issues opened."
 }
