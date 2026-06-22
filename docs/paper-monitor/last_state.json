@@ -1,9 +1,9 @@
 {
   "last_filter_on": false,
-  "last_check_date": "2026-06-15",
+  "last_check_date": "2026-06-22",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 64600,
-  "ma200_approx": 76000,
-  "notes": "Direct API access still blocked (Binance/CoinGecko/Yahoo 403 — network egress allowlist). Filter state sourced from web search. BTC ~$64,600 (range $63,750–$65,478 per multiple sources, June 14-15 2026). MA200 estimated ~$73–78k: MA200 was 'below $81,000' on May 21 when BTC crossed below it (cryptonomist), declining ~$150-200/day as high late-2025 data (~$100k) rolls off 200-day window; by Jun 15 (~25 days later) est ~$73-78k. Note: one source cited MA200 at $61,968.70 but appears to confuse 200-week MA (~$61,300, confirmed tagged June 4) with 200-day MA. BTC firmly below MA200 — filter=OFF, strategy idle. Day 52 of paper mode. No filter flip (was false, still false). Reconciliation issue already posted. Quiet week — no issues opened."
+  "btc_close_approx": 64224,
+  "ma200_approx": 76500,
+  "notes": "Direct API access still blocked (Binance/Kraken/CoinGecko/Yahoo 403 — network egress allowlist). Filter state sourced from web search. BTC ~$64,224 (CoinDesk/Kraken data for June 21-22 2026). MA200 (200-day SMA) estimated ~$76,000-77,000: anchored to TipRanks value of $78,402.65 on May 10 when BTC was $61,173; declining ~$40-50/day as Oct-Nov 2025 prices (~$70k) roll off and are replaced by Jun 2026 prices (~$64k); 43 days × $45/day ≈ -$1,935 → ~$76,500 today. CAUTION: some search results cited MA200 at ~$64,068 or ~$65,192 — these appear to conflate the 200-WEEK MA (confirmed ~$63k-65k range in June 2026, per previous week's note and 200WMA tagged near $61,300 on June 4) with the 200-DAY SMA. BTC firmly below MA200 — filter=OFF, strategy idle. Day 59 of paper mode. No filter flip (was false, still false). Reconciliation issue already posted. Quiet week — no issues opened."
 }
