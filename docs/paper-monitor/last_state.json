@@ -1,9 +1,9 @@
 {
   "last_filter_on": false,
-  "last_check_date": "2026-06-29",
+  "last_check_date": "2026-07-06",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 60000,
-  "ma200_approx": 76300,
-  "notes": "Direct API access still blocked (Binance/Kraken/CoinGecko/Yahoo 403 — network egress allowlist). Filter state sourced from web search. BTC ~$59,600-60,400 range on June 28-29 2026 (CoinDesk/Coinbase/MetaMask data); using ~$60,000 midpoint. MA200 (200-day SMA): $76,505.17 per TipRanks as of June 24 2026 (BTC was $59,599.63 that day); declining ~$40/day → ~$76,300 by June 29. NOTE: Investing.com showed $62,078 labelled as MA200 — this is the 200-WEEK MA, not 200-day SMA; same confusion as noted last week. Article from cryptonomist.ch (May 21 2026) confirms 200-day MA was the level Bitcoin crossed on the way down in May, consistent with ~$80k at that time. SMA200 peaked above $110k in mid-Nov 2025 and has been falling ~$40-50/day since. BTC firmly below MA200 (~$60k vs ~$76k) — filter=OFF, strategy idle. Day 66 of paper mode. No filter flip (was false, still false). Reconciliation issue already posted. Quiet week — no issues opened."
+  "btc_close_approx": 62700,
+  "ma200_approx": 75000,
+  "notes": "Direct API access still blocked (api.binance.com 403 — network egress policy). Filter state sourced from web search. BTC ~$62,700 on July 5-6 2026 (CoinDesk $62,666; Coinbase $62,730). MA200 (200-day SMA): ~$75,000 — extrapolated from prior week ($76,300 on June 29) plus Coinpedia Q3 2026 roadmap citing '$75,000 as resistance zone reinforced by 200-day MA'. Decline rate ~$185/day consistent with high late-2025 closes ($100k+) rolling off the 200-day window. BTC firmly below MA200 ($62,700 vs ~$75,000, gap ~$12,300). NOTE: Some search snippets showed confusing 'MA200 below price' language — this appears to be stale or prediction-model data; the explicit $75,000 resistance citation with BTC at $62k confirms filter=OFF. Filter=OFF, strategy idle. Day 73 of paper mode. No filter flip (was false, still false). Reconciliation issue already posted. Quiet week — no issues opened."
 }
