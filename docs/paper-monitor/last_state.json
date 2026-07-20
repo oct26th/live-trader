@@ -1,9 +1,9 @@
 {
-  "last_filter_on": true,
-  "last_check_date": "2026-07-13",
+  "last_filter_on": false,
+  "last_check_date": "2026-07-20",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 63800,
-  "ma200_approx": 62256,
-  "notes": "FILTER FLIPPED OFF→ON. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$63,800 on July 12-13 2026 (MetaMask $63,766; Yahoo Finance $63,845). MA200 sourced via Investing.com real-time data: $62,255.81. BTC ~$1,544 above MA200 — narrow margin, but filter=ON. Gap from prior week ($62,700 vs ~$75,000) has narrowed significantly — MA200 has been declining as high late-2025 closes roll off the 200-day window. Issue #3 opened: [PAPER] Filter flipped: false→true. Momentum strategy should activate on next Sunday rebalance. Day 80 of paper mode. reconciliation_posted=true (issue already filed previously)."
+  "btc_close_approx": 64376,
+  "ma200_approx": 70500,
+  "notes": "FILTER FLIPPED ON→OFF. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$64,376 on July 19-20 2026 (CoinDesk). MA200 estimated from CoinDesk July 10 article ($71,147) declining ~$100/day to ~$70,500 by July 20. BTC ~$6,100 below MA200 — filter clearly OFF. IMPORTANT: Issue #3's MA200 of $62,256 (July 13) appears to have been incorrect — likely read 200-week MA or a stale metric instead of 200-day MA. The 200-day MA has been $70K+ throughout July per multiple sources. The filter has likely been continuously OFF since paper mode started. Issue #4 opened: [PAPER] Filter flipped: true→false. reconciliation_posted=true (issue #1 filed May 25). Day 87 of paper mode."
 }
