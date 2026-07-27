@@ -1,9 +1,9 @@
 {
   "last_filter_on": false,
-  "last_check_date": "2026-07-20",
+  "last_check_date": "2026-07-27",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 64376,
-  "ma200_approx": 70500,
-  "notes": "FILTER FLIPPED ON→OFF. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$64,376 on July 19-20 2026 (CoinDesk). MA200 estimated from CoinDesk July 10 article ($71,147) declining ~$100/day to ~$70,500 by July 20. BTC ~$6,100 below MA200 — filter clearly OFF. IMPORTANT: Issue #3's MA200 of $62,256 (July 13) appears to have been incorrect — likely read 200-week MA or a stale metric instead of 200-day MA. The 200-day MA has been $70K+ throughout July per multiple sources. The filter has likely been continuously OFF since paper mode started. Issue #4 opened: [PAPER] Filter flipped: true→false. reconciliation_posted=true (issue #1 filed May 25). Day 87 of paper mode."
+  "btc_close_approx": 64502,
+  "ma200_approx": 72900,
+  "notes": "QUIET CHECK. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$64,502 (CoinDesk July 26, 2026). MA200 estimated at ~$72,900 based on July 22 value of $72,937 (web search). BTC ~$8,400 below MA200 — filter clearly OFF. No flip from last week. reconciliation_posted=true (issue already filed). Day 94 of paper mode. No issues opened this run."
 }
