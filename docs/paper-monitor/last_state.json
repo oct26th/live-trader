@@ -1,9 +1,9 @@
 {
-  "last_filter_on": false,
-  "last_check_date": "2026-08-03",
+  "last_filter_on": true,
+  "last_check_date": "2026-08-10",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 63381,
-  "ma200_approx": 64137,
-  "notes": "QUIET CHECK. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$63,381 (Aug 3, 2026). MA200 sourced via web search: ~$64,137 (Aug 2, 2026, bgeometrics.com). BTC ~$756 below MA200 — filter still OFF but gap has narrowed sharply (was ~$8,400 below last week — NOTE: last week MA200 was a rough estimate; this week's figure is more precise). Very close to a potential flip; next Monday check is critical. Day 101 of paper mode. No issues opened this run."
+  "btc_close_approx": 65209,
+  "ma200_approx": 64061,
+  "notes": "FILTER FLIPPED OFF→ON. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$65,209 (Aug 10, 2026); Friday Aug 7 close was ~$64,940. MA200 sourced via web search: ~$64,061 (Investing.com real-time data). BTC ~$1,148 above MA200 (~1.8%) — filter flipped ON. TradingView published 'Bitcoin Runs Into 200-Day Moving Average. What Happens Next?' this week, consistent with the flip. GitHub issue #5 opened. Day 108 of paper mode. ⚠️ Data quality: web-sourced estimates only; verify with live Binance candle before acting."
 }
