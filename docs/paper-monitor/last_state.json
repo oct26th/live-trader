@@ -1,9 +1,9 @@
 {
-  "last_filter_on": false,
-  "last_check_date": "2026-08-17",
+  "last_filter_on": true,
+  "last_check_date": "2026-08-31",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 63061,
-  "ma200_approx": 70006,
-  "notes": "FILTER FLIPPED ON→OFF. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$63,061 (CMC/Bitget/CoinGecko consensus, Aug 17 2026). MA200 sourced via TipRanks technical analysis: ~$70,006 (Aug 12 2026). BTC ~$6,945 BELOW MA200 (~9.9%) — filter is OFF. GitHub issue #6 opened. Day 115 of paper mode. NOTE: Last week's issue #5 reported MA200 ~$64,061 (flip to ON) — that MA200 estimate appears to have been incorrect; current MA200 sources consistently show $70,000–$73,000, meaning BTC has likely been below MA200 throughout the paper period. ⚠️ Data quality: web-sourced estimates only; verify with live Binance candle before acting."
+  "btc_close_approx": 78500,
+  "ma200_approx": 69144,
+  "notes": "FILTER FLIPPED OFF→ON. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$78,500 (CoinGecko/OKX/Coinbase consensus, Aug 31 2026). MA200 sourced via TipRanks/KuCoin technical analysis: ~$69,144 (Aug 2026). BTC crossed above MA200 on approx Aug 21 2026 after 270+ days below. BTC ~$9,356 ABOVE MA200 (~+13.5%) — filter is ON. GitHub issue #7 opened. Day 129 of paper mode. Next Sunday (2026-09-06) expect first momentum rebalance if strategy is running correctly on Hermes."
 }
