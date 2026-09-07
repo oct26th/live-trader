@@ -1,9 +1,9 @@
 {
   "last_filter_on": true,
-  "last_check_date": "2026-08-31",
+  "last_check_date": "2026-09-07",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 78500,
-  "ma200_approx": 69144,
-  "notes": "FILTER FLIPPED OFF→ON. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$78,500 (CoinGecko/OKX/Coinbase consensus, Aug 31 2026). MA200 sourced via TipRanks/KuCoin technical analysis: ~$69,144 (Aug 2026). BTC crossed above MA200 on approx Aug 21 2026 after 270+ days below. BTC ~$9,356 ABOVE MA200 (~+13.5%) — filter is ON. GitHub issue #7 opened. Day 129 of paper mode. Next Sunday (2026-09-06) expect first momentum rebalance if strategy is running correctly on Hermes."
+  "btc_close_approx": 79727,
+  "ma200_approx": 69434,
+  "notes": "Filter still ON. BTC ~$79,727, MA200 ~$69,434 (BTC +$10,293 / +14.8% above MA200). No state change from last week. api.binance.com still blocked (403 egress policy); BTC price sourced via web search consensus (Sep 7 2026). Day 136 of paper mode. Reconciliation issue already posted. Next rebalance expected Sun 2026-09-13."
 }
