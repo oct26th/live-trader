@@ -1,9 +1,9 @@
 {
   "last_filter_on": true,
-  "last_check_date": "2026-08-24",
+  "last_check_date": "2026-09-14",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 77348,
-  "ma200_approx": 73000,
-  "notes": "filter=ON, no flip. api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$77,348 (Aug 24, 2026). MA200 sourced via web search: ~$73,000. BTC reclaimed MA200 on Aug 21, 2026 (~$73K) for first time since November 2025, after 270 days below. Previous state file (Aug 10) recorded filter_on=true at ~$65,209/$64,061 — those web-sourced prices were inconsistent with the '270 days below' timeline; Aug 21 break-above now confirmed. Day 122 of paper mode. Reconciliation issue previously posted. No new issues opened this run. ⚠️ Data quality: web-sourced estimates only; verify with live Binance candle before acting on filter state."
+  "btc_close_approx": 77300,
+  "ma200_approx": 69434,
+  "notes": "filter=ON, no flip (ON→ON). api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$77,300 (Sep 14, 2026). MA200 sourced via web search: ~$69,434. BTC remains well above MA200 — filter stays ON. Day 143 of paper mode. Reconciliation issue previously posted. No new issues opened this run. ⚠️ Data quality: web-sourced estimates only; verify with live Binance candle before acting on filter state."
 }
