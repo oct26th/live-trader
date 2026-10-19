@@ -1,9 +1,9 @@
 {
   "last_filter_on": true,
-  "last_check_date": "2026-10-12",
+  "last_check_date": "2026-10-19",
   "paper_start_date": "2026-04-24",
   "reconciliation_posted": true,
-  "btc_close_approx": 83615,
-  "ma200_approx": 71500,
-  "notes": "filter=ON, no flip (ON→ON). api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$83,615 (Oct 12, 2026, OKX/CoinDesk). MA200 sourced via web search: ~$71,500 est (late-Sept sources showed ~$70,929; slightly extrapolated for Oct 12). BTC remains well above MA200 — filter stays ON. Day 171 of paper mode. Reconciliation issue previously posted. No new issues opened this run. ⚠️ Data quality: web-sourced estimates only; verify with live Binance candle before acting on filter state."
+  "btc_close_approx": 84692,
+  "ma200_approx": 72500,
+  "notes": "filter=ON, no flip (ON→ON). api.binance.com still blocked (403 egress policy). BTC price sourced via web search: ~$84,692 (Changelly current estimate, Oct 19 2026). MA200 extrapolated from ~$71,500 (Oct 12) + gradual weekly rise → ~$72,500 est. BTC remains well above MA200 — filter stays ON. Day 178 of paper mode. Reconciliation issue previously posted. No new issues opened this run. ⚠️ Data quality: web-sourced estimates only; verify with live Binance candle before acting on filter state."
 }
